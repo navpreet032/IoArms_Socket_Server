@@ -1,48 +1,53 @@
+//? DATA FORMAT = {"event":"message", "data":"ON"}
+const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const WebSocket = require('ws');
+const cors = require('cors');
+const app = express();
+app.use(cors());
 
-const server = http.createServer();
-const io = socketIo(server, {
-  cors: {
-    origin: "*", // Adjust according to your security requirements
-  },
-});
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-// Data structure to store UIDs and corresponding sockets
-const clients = {};
 
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+const clients = new Map(); // Map to hold UID to WebSocket set
 
-  // Handle UID registration
-  socket.on('register', (uid) => {
-    clients[uid] = clients[uid] || [];
-    clients[uid].push(socket);
-    console.log(`Client registered with UID: ${uid}`);
-  });
+wss.on('connection', (ws) => {
+  let userUID;
+console.log("New connction......")
+  ws.on('message', (message) => {
+    if (!userUID) {
+      console.log("UID : ", message.toString())
+      // First message from client should be the UID
+      userUID =  message.toString();
+      if (!clients.has(userUID)) {
+        clients.set(userUID, new Set());
+      }
+      clients.get(userUID).add(ws);
+      return;
+    }
 
-  // Relay message to clients with the same UID
-  socket.on('message', (data) => {
-    const { uid, message } = data;
-    if (clients[uid]) {
-      clients[uid].forEach(clientSocket => {
-        if (clientSocket !== socket) {
-          clientSocket.emit('message', message);
+    // Relay message to all clients with the same UID
+    if (clients.has(userUID)) {
+      clients.get(userUID).forEach(client => {
+        if (client !== ws && client.readyState === WebSocket.OPEN) {
+          client.send(message);
+          console.log("Data relyed : ", message.toString())
         }
       });
     }
   });
 
-  // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-    for (const uid in clients) {
-      clients[uid] = clients[uid].filter(clientSocket => clientSocket !== socket);
+  ws.on('close', () => {
+    if (userUID && clients.has(userUID)) {
+      clients.get(userUID).delete(ws);
+      if (clients.get(userUID).size === 0) {
+        clients.delete(userUID);
+      }
     }
   });
 });
 
-const PORT = 3000;
-server.listen(PORT, () => {
-  console.log(`WebSocket Server running on port ${PORT}`);
+server.listen(3300, () => {
+  console.log(`Server started on port ${server.address().port}`);
 });
