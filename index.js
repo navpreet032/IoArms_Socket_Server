@@ -8,7 +8,7 @@ const app = express();
 app.use(cors());
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-const schema = require('../eventType.js')
+const schema = require('./eventType')
 const { v4: uuidv4 } = require('uuid');
 
 const server_id = uuidv4().toString();
